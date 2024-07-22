@@ -269,9 +269,7 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 ACCOUNT_EMAIL_REQUIRED = True  # The email field is designated as a required field when registering as a member.
 
 
-"""
-swagger 세팅
-"""
+# Set the swagger application
 
 SWAGGER_SETTINGS = {
     "SECURITY_DEFINITIONS": {
@@ -279,10 +277,10 @@ SWAGGER_SETTINGS = {
     }
 }
 
-"""
-channels 세팅
-"""
-ASGI_APPLICATION = "oversea_backend.asgi.application"
+# Set the ASGI application
+ASGI_APPLICATION = 'oversea_backend.asgi.application'
+
+# Channels layer configuration (using Redis is common, but for simplicity we'll use InMemoryChannelLayer)
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels.layers.InMemoryChannelLayer',

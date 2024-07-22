@@ -1,4 +1,5 @@
-# consumers.py
+# oversea_backend/consumers.py
+
 import json
 from channels.generic.websocket import WebsocketConsumer
 
