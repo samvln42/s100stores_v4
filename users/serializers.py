@@ -4,7 +4,6 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from users.models import UserModel
 from store.models import StoreModel
-from restaurant2.models import Restaurant, Employee
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -112,31 +111,6 @@ class SellerSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "seller": {"required": False},
             "name": {"required": True},
-            "address": {"required": True},
-        }
-
-
-# Management Restaurant
-class RestaurantSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Restaurant
-        fields = "__all__"
-
-        extra_kwargs = {
-            "restaurant": {"required": False},
-            "name": {"required": True},
-            "address": {"required": True},
-        }
-        
-class EmployeeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Employee
-        fields = "__all__"
-
-        extra_kwargs = {
-            "restaurant": {"required": False},
-            "employee": {"required": False},
-            "phone": {"required": True},
             "address": {"required": True},
         }
 

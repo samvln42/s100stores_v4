@@ -14,12 +14,6 @@ urlpatterns = [
     # join the membership
     path("signup", views.SignupView.as_view(), name="signup"),
     path("seller-signup", views.SellerSignup.as_view(), name="seller_google_signup"),
-    # Restaurant
-    path("signup-restaurant", views.RestaurantSignupView.as_view(), name="signup-restaurant"),
-    path("signin-restaurant", views.RestaurantLoginView.as_view(), name="signin-restaurant"),
-    
-    path("signup-employee", views.EmployeeSignupView.as_view(), name="signup-employee"),
-    path("signin-employee", views.EmployeeLoginView.as_view(), name="signin-employee"),
     # Manage superuser
     path('create-superuser', views.CreateSuperuserView.as_view(), name='create-superuser'),
     path('admin-users', views.ListAdminUsersView.as_view(), name='list-admin-users'),

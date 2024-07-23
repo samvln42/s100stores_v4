@@ -90,7 +90,6 @@ else:
 # Application definition
 
 INSTALLED_APPS = [
-    "channels",
     "drf_yasg",
     "chat",
     "django.contrib.admin",
@@ -107,7 +106,6 @@ INSTALLED_APPS = [
     "users",
     "store",
     "storages",
-    "restaurant2"
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -279,10 +277,3 @@ SWAGGER_SETTINGS = {
 
 # Set the ASGI application
 ASGI_APPLICATION = 'oversea_backend.asgi.application'
-
-# Channels layer configuration (using Redis is common, but for simplicity we'll use InMemoryChannelLayer)
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
-    },
-}

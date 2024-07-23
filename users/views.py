@@ -39,15 +39,12 @@ from .serializers import (
     AdminUserSerializer,
     ClientUserSerializer,
     SellerUserSerializer,
-    RestaurantSerializer,
-    EmployeeSerializer,
 )
 from django.shortcuts import render
 import smtplib
 import jwt
 from django.conf import settings
 from rest_framework import generics, permissions
-from restaurant2.models import Restaurant, Employee
 
 
 # Send email
@@ -119,28 +116,6 @@ class CheckEmailView(APIView):
 
 # join the membership
 class SignupView(APIView):
-    # def get(self, request):
-    #     user = request.user.is_authenticated
-    #     if user:
-    #         return redirect("/")
-    #     else:
-    #         param = request.GET.get("user_type")  # Parameter called ‘param_name’
-    #         if not param:
-    #             return render(
-    #                 request,
-    #                 "user/user_type_choice.html",
-    #             )
-    #         elif str(param) == "1":
-    #             return render(
-    #                 request,
-    #                 "user/basic_signup.html",
-    #             )
-    #         elif str(param) == "2":
-    #             return render(
-    #                 request,
-    #                 "user/seller_signup.html",
-    #             )
-
     @swagger_auto_schema(
         tags=["join the membership"],
         request_body=PostUserSerializer,
@@ -201,42 +176,6 @@ class SignupView(APIView):
             else:
                 serializer = UserSerializer(data=request.data)
                 
-            # if serializer.is_valid():
-            #     """
-            #     Add store-specific membership registration logic
-            #     """
-            #     if category != "2":
-            #         code_obj.delete()  # Delete email verification code
-            #         serializer.save()
-            #     if category == "2":
-            #         name = request.data.get("name")
-            #         address = request.data.get("address")
-            #         if not name or not address:
-            #             return Response(
-            #                 {"message": "Please enter all required information."},
-            #                 status.HTTP_400_BAD_REQUEST,
-            #             )
-            #         sell_serializer = SellerSerializer(data=request.data)
-            #         code_obj.delete()  # Delete email verification code
-            #         if sell_serializer.is_valid():
-            #             serializer.save(is_seller=True)
-            #             sell_serializer.save(seller_id=serializer.data.get("id"))
-            #         else:
-            #             return Response(
-            #                 {"message": f"{serializer.errors}"},
-            #                 status=status.HTTP_400_BAD_REQUEST,
-            #             )
-        
-            #     return Response(
-            #         {"message": "Your registration has been completed."},
-            #         status=status.HTTP_201_CREATED,
-            #     )
-            # else:
-            #     return Response(
-            #         {"message": f"{serializer.errors}"},
-            #         status=status.HTTP_400_BAD_REQUEST,
-            #     )
-            
             if serializer.is_valid():
                 """
                 Add store-specific membership registration logic
@@ -252,11 +191,11 @@ class SignupView(APIView):
                             {"message": "Please enter all required information."},
                             status.HTTP_400_BAD_REQUEST,
                         )
-                    restaurant_serializer = RestaurantSerializer(data=request.data)
+                    sell_serializer = SellerSerializer(data=request.data)
                     code_obj.delete()  # Delete email verification code
-                    if restaurant_serializer.is_valid():
-                        serializer.save(is_restaurant=True)
-                        restaurant_serializer.save(restaurant_id=serializer.data.get("id"))
+                    if sell_serializer.is_valid():
+                        serializer.save(is_seller=True)
+                        sell_serializer.save(seller_id=serializer.data.get("id"))
                     else:
                         return Response(
                             {"message": f"{serializer.errors}"},
@@ -267,254 +206,12 @@ class SignupView(APIView):
                     {"message": "Your registration has been completed."},
                     status=status.HTTP_201_CREATED,
                 )
-
-                return Response(
-                    {"message": "Your registration has been completed."},
-                    status=status.HTTP_201_CREATED,
-                )
             else:
                 return Response(
                     {"message": f"{serializer.errors}"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-
-class RestaurantSignupView(APIView):
-    @swagger_auto_schema(
-        tags=["join the membership"],
-        request_body=PostUserSerializer,
-        responses={200: "Success"},
-    )
-    def post(self, request):
-        with transaction.atomic():
-            email = request.data.get("email")
-            password = request.data.get("password")
-            password2 = request.data.get("password2")
-            profile_image = request.data.get("profile_image")
-
-            # Check whether the password and password match
-            if password != password2:
-                return JsonResponse(
-                    {
-                        "message": "Your password and password confirmation do not match."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Check for email duplicates
-            user = UserModel.objects.filter(email=email)
-            if user.exists():
-                return Response(
-                    {"message": "The email already exists."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if profile_image == "undefined" or profile_image is None:
-                # If the image comes as an empty value, use copy to change it!
-                # deepcopy -> Import copy module? -> Complete copy! (safe)
-                # Consider using try, except -> Additional exception handling!
-                data = request.data.copy()
-                data["profile_image"] = None
-                serializer = UserSerializer(data=data)
-            else:
-                serializer = UserSerializer(data=request.data)
-
-            if serializer.is_valid():
-                name = request.data.get("name")
-                address = request.data.get("address")
-                if not name or not address:
-                    return Response(
-                        {"message": "Please enter all required information."},
-                        status.HTTP_400_BAD_REQUEST,
-                    )
-                restaurant_serializer = RestaurantSerializer(data=request.data)
-                if restaurant_serializer.is_valid():
-                    serializer.save(is_restaurant=True)
-                    restaurant_serializer.save(restaurant_id=serializer.data.get("id"))
-                else:
-                    return Response(
-                        {"message": f"{serializer.errors}"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                return Response(
-                    {"message": "Your registration has been completed."},
-                    status=status.HTTP_201_CREATED,
-                )
-            else:
-                return Response(
-                    {"message": f"{serializer.errors}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-
-class RestaurantLoginView(TokenObtainPairView):
-    serializer_class = LoginSerializer
-
-    def post(self, request, *args, **kwargs):
-        data = request.data
-        email = data.get("email")
-        password = data.get("password")
-
-        try:
-            user = UserModel.objects.get(email=email)
-        except UserModel.DoesNotExist:
-            return Response(data={"message": "Email does not exist."}, status=400)
-
-        if not check_password(password, user.password):
-            return Response(data={"message": "Incorrect password."}, status=400)
-
-        serializer = self.get_serializer(data=data)
-        if serializer.is_valid():
-            token = serializer.validated_data
-            is_admin = user.is_admin
-            is_restaurant = user.is_restaurant
-            restaurant = Restaurant.objects.filter(
-                restaurant=user
-            ).first()  # Use .first() to get the first object.
-            restaurant_id = restaurant.id if restaurant else False
-            origin_restaurant_name = restaurant.name if restaurant else False
-
-            if is_restaurant == True:
-                return Response(
-                    data={
-                        "token": token,
-                        "user_id": user.id,
-                        "is_admin": is_admin,
-                        "is_restaurant": is_restaurant,
-                        "restaurant_id": restaurant_id,
-                        "user_name": user.nickname,
-                        "origin_restaurant_name": origin_restaurant_name,
-                        "email": user.email if user.email else False,
-                        "image": (
-                            user.profile_image.url if user.profile_image else False
-                        ),
-                    },
-                    status=200,
-                )
-            else:
-                return Response(
-                    data={"message": "Your account is not the Restaurant owner!"},
-                    status=400,
-                )
-
-        else:
-            return Response(
-                data={
-                    "message": "An error occurred. Please contact the administrator."
-                },
-                status=400,
-            )
-
-
-# Employee
-class EmployeeSignupView(APIView):
-    @swagger_auto_schema(
-        tags=["join the membership"],
-        request_body=PostUserSerializer,
-        responses={200: "Success"},
-    )
-    def post(self, request):
-        with transaction.atomic():
-            email = request.data.get("email")
-            password = request.data.get("password")
-            password2 = request.data.get("password2")
-            profile_image = request.data.get("profile_image")
-
-            # Check whether the password and password match
-            if password != password2:
-                return JsonResponse(
-                    {
-                        "message": "Your password and password confirmation do not match."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            # Check for email duplicates
-            user = UserModel.objects.filter(email=email)
-            if user.exists():
-                return Response(
-                    {"message": "The email already exists."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if profile_image == "undefined" or profile_image is None:
-                # If the image comes as an empty value, use copy to change it!
-                # deepcopy -> Import copy module? -> Complete copy! (safe)
-                # Consider using try, except -> Additional exception handling!
-                data = request.data.copy()
-                data["profile_image"] = None
-                serializer = UserSerializer(data=data)
-            else:
-                serializer = UserSerializer(data=request.data)
-
-            if serializer.is_valid():
-                phone = request.data.get("phone")
-                address = request.data.get("address")
-                if not phone or not address:
-                    return Response(
-                        {"message": "Please enter all required information."},
-                        status.HTTP_400_BAD_REQUEST,
-                    )
-                employee_serializer = EmployeeSerializer(data=request.data)
-                if employee_serializer.is_valid():
-                    serializer.save(is_employee_of_restaurant=True)
-                    employee_serializer.save(employee_id=serializer.data.get("id"))
-                else:
-                    return Response(
-                        {"message": f"{serializer.errors}"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                return Response(
-                    {"message": "Your registration has been completed."},
-                    status=status.HTTP_201_CREATED,
-                )
-            else:
-                return Response(
-                    {"message": f"{serializer.errors}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-
-class EmployeeLoginView(TokenObtainPairView):
-    serializer_class = LoginSerializer
-
-    def post(self, request, *args, **kwargs):
-        data = request.data
-        restaurant_id = data.get("restaurant")
-        email = data.get("email")
-        password = data.get("password")
-
-        try:
-            user = UserModel.objects.get(email=email)
-        except UserModel.DoesNotExist:
-            return Response(data={"message": "Invalid credentials."}, status=400)
-
-        if not user.check_password(password):
-            return Response(data={"message": "Invalid credentials."}, status=400)
-
-        try:
-            employee = Employee.objects.get(employee=user, restaurant_id=restaurant_id)
-        except Employee.DoesNotExist:
-            return Response(data={"message": "No employee record found for this restaurant."}, status=400)
-
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        token = serializer.validated_data['access']
-
-        return Response(
-            data={
-                "token": token,
-                "user_id": user.id,
-                "user_name": user.nickname,
-                "is_employee": True,
-                "employee_id": employee.id,
-                "email": user.email,
-                "image": user.profile_image.url if user.profile_image else None,
-            },
-            status=200,
-        )
 
 
 # ===== Manage Admin user =====
@@ -687,15 +384,6 @@ class DeleteSellerUserView(APIView):
 
 # log in
 class LoginView(TokenObtainPairView):
-    # template_name = "user/signin.html"  # Template for login page
-    # form_class = UserForm
-    # serializer_class = LoginSerializer
-
-    # def get(self, request, *args, **kwargs):
-    #     return render(
-    #         request,
-    #         self.template_name,
-    #     )
 
     def post(self, request, *args, **kwargs):
         data = request.data
@@ -720,18 +408,6 @@ class LoginView(TokenObtainPairView):
             store_id = store.id if store else False
             origin_store_name = store.name if store else False
             
-            restaurant = Restaurant.objects.filter(
-                restaurant=user
-            ).first() 
-            restaurant_id = restaurant.id if restaurant else False
-            restaurnt_name = restaurant.name if restaurant else False
-            
-            employee = Employee.objects.filter(
-                employee=user
-            ).first() 
-            employee_id = employee.id if employee else False
-            employee_role = employee.role if employee else False
-            
             return Response(
                 data={
                     "token": token,
@@ -742,10 +418,6 @@ class LoginView(TokenObtainPairView):
                     "origin_store_name": origin_store_name,
                     "email": user.email if user.email else False,
                     "image": user.profile_image.url if user.profile_image else False,
-                    "restaurant_id": restaurant_id,
-                    "restaurnt_name": restaurnt_name,
-                    "employee_id": employee_id,
-                    "employee_role": employee_role
                 },
                 status=200,
             )

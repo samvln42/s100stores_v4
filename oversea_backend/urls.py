@@ -12,7 +12,6 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("user/", include("users.urls")),
     path("store/", include("store.urls")),
-    path("restaurants/", include("restaurant2.urls")),
     path("", include_docs_urls(title="OverSea APIs") ),
     path(
         "schema",
