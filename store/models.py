@@ -172,7 +172,7 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE)
     product = models.ForeignKey(
-        GoodsModel, on_delete=models.DO_NOTHING, related_name="orderitem"
+        GoodsModel, on_delete=models.SET_NULL, null=True, related_name="orderitem"
     )
     quantity = models.PositiveIntegerField(default=1)
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -287,7 +287,7 @@ class WebInfo(models.Model):
 
 class NoticeModel(models.Model):
     subject = models.CharField(max_length=100)
-    user = models.ForeignKey(UserModel, on_delete=models.DO_NOTHING, verbose_name="admin")
+    user = models.ForeignKey(UserModel, on_delete=models.CASCADE, verbose_name="admin")
     brochure = models.FileField(
         null=True, blank=True, verbose_name="Brochure", upload_to="media/notice/"
     )
