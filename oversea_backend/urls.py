@@ -9,12 +9,12 @@ from rest_framework.schemas import get_schema_view
 from rest_framework.documentation import include_docs_urls
 
 urlpatterns = [
-    path("api/admin/", admin.site.urls),
-    path("api/user/", include("users.urls")),
-    path("api/store/", include("store.urls")),
-    path("api/", include_docs_urls(title="OverSea APIs") ),
+    path("admin/", admin.site.urls),
+    path("user/", include("users.urls")),
+    path("store/", include("store.urls")),
+    path("", include_docs_urls(title="OverSea APIs") ),
     path(
-        "api/schema/",
+        "schema/",
         get_schema_view(
             title="OverSea APIs",
             description="APIs for Humascot OverSea",
