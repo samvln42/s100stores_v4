@@ -44,6 +44,53 @@ class StoreModel(models.Model):
 
     def __str__(self):
         return str(self.name)
+    
+class Stocked(models.Model):
+    class Meta:
+        db_table = "stocked"
+        verbose_name_plural = "Stocked"
+
+    store = models.ForeignKey(
+        StoreModel, 
+        on_delete=models.CASCADE,
+        related_name='stocked'
+    )
+    point_view = models.CharField(max_length=100, default='0')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Stocked {self.pk} - Store: {self.store.name}"
+
+class StockedImage(models.Model):
+    class Meta:
+        db_table = "stocked_images"
+        verbose_name_plural = "Stocked Images"
+
+    stocked = models.ForeignKey(
+        Stocked,
+        on_delete=models.CASCADE,
+        related_name='images'
+    )
+    position = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+    image = models.ImageField(upload_to='media/stocked/')
+
+    def __str__(self):
+        return f"StockedImage {self.pk} - Position: {self.position}"
+
+    def delete(self, *args, **kwargs):
+        # Delete the physical image file
+        if self.image:
+            self.image.delete()
+        
+        # Delete all related goods before deleting self
+        GoodsModel.objects.filter(stocked_image=self).delete()
+        
+        super().delete(*args, **kwargs)
 
 
 class GoodsModel(models.Model):
@@ -61,9 +108,17 @@ class GoodsModel(models.Model):
         blank=True,
         verbose_name="category",
     )
+    stocked_image = models.ForeignKey(
+        'StockedImage',
+        on_delete=models.CASCADE,
+        null=True,
+        related_name='goods'
+    )
     name = models.CharField(max_length=100, verbose_name="product name")
     price = models.PositiveIntegerField(default=0, verbose_name="price")
     description = models.TextField(blank=True)
+    x_axis = models.JSONField(null=True)
+    y_axis = models.JSONField(null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

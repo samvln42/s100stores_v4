@@ -1,7 +1,10 @@
 import math
+import uuid
+import base64
 from rest_framework import serializers
 from rest_framework.serializers import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.core.files.base import ContentFile
 
 from store.models import (
     StoreModel,
@@ -19,6 +22,8 @@ from store.models import (
     Review,
     WebInfo,
     NoticeModel,
+    Stocked,
+    StockedImage,
 )
 from users.models import UserModel
 
@@ -35,76 +40,42 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ("id", "name", "image")
 
 
+class ProductImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['id', 'image']
+
+
 class GoodsSerializer(serializers.ModelSerializer):
-    store_name = serializers.SerializerMethodField()
-    star_avg = serializers.SerializerMethodField()
-    category = serializers.SerializerMethodField()
-    format_price = serializers.SerializerMethodField()
-    review_total = serializers.SerializerMethodField()
+    category = serializers.CharField(source='category.name')
+    store_name = serializers.CharField(source='store.name')
     store_address = serializers.SerializerMethodField()
     sizes = serializers.SerializerMethodField()
     colors = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
-    images = serializers.SerializerMethodField()
-
-    def get_store_name(self, obj):
-        store_name = obj.store.name
-        if len(store_name) >= 7:
-            store_name = f"{store_name[:7]}..."
-        return store_name
-
-    def get_star_avg(self, obj):
-        review = Review.objects.filter(product_id=obj.id).values("rating")
-        total = 0
-        for i in review:
-            total += i["rating"]
-
-        return math.ceil(total / review.count()) if total != 0 else 0
-
-    def get_category(self, obj):
-        return obj.category.name
-
-    def get_format_price(self, obj):
-        return str(format_with_commas(obj.price))
-
-    def get_review_total(self, obj):
-        # review_total = ReviewModel.objects.filter(goods_id=obj.id).count()
-        review_total = Review.objects.filter(product_id=obj.id).count()
-        return review_total
 
     def get_store_address(self, obj):
-        address = obj.store.address.split(" ")[:2]
-        address = " ".join(address)
-        return address
+        return obj.store.address if obj.store else None
 
     def get_sizes(self, obj):
-        sizes = SizeModel.objects.filter(product=obj)
-        serializer = SizeSerializer(sizes, many=True)
-        return serializer.data
+        return [size.name for size in obj.size.all()]
 
     def get_colors(self, obj):
-        colors = ColorModel.objects.filter(product=obj)
-        serializer = ColorSerializer(colors, many=True)
-        return serializer.data
+        return [color.name for color in obj.color.all()]
 
     def get_image(self, obj):
-        image = ImageModel.objects.filter(goods_id=obj.id).first()
-        serializer = ImageSerializer(image)
-        image = serializer.data.get("image")
-        return image
-
-    def get_images(self, obj):
-        images = ProductImage.objects.filter(product=obj).first()
-        serializer = ProductImageSerializer(images)
-        images = serializer.data.get("image")
-        return images
+        first_image = obj.images.first()
+        if first_image:
+            return first_image.image.url
+        return None
 
     class Meta:
         model = GoodsModel
-        exclude = ["created_at", "updated_at"]
-        # extra_kwargs = {
-        #     "category": {"required": False},
-        # }
+        fields = [
+            'id', 'store', 'store_name', 'store_address', 'category',
+            'name', 'price', 'description', 'x_axis', 'y_axis',
+            'sizes', 'colors', 'image', 'created_at', 'updated_at'
+        ]
 
 
 class UpdateStoreSerializer(serializers.ModelSerializer):
@@ -140,8 +111,7 @@ class StoreSerializer(serializers.ModelSerializer):
 
     def get_goods_set(self, obj):
         goods = GoodsModel.objects.filter(store_id=obj.id)
-        serializer = OnlyStoreGoodsSerializer(goods, many=True)
-        return serializer.data
+        return GoodsSerializer(goods, many=True).data
 
     class Meta:
         model = StoreModel
@@ -313,13 +283,6 @@ class ImageSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "goods": {"required": False},
         }
-
-
-class ProductImageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductImage
-        fields = "__all__"
-
 
 # Order
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -583,6 +546,8 @@ class OnlyStoreGoodsSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     format_price = serializers.SerializerMethodField()
     star_avg = serializers.SerializerMethodField()
+    x_axis = serializers.ListField(child=serializers.FloatField(), required=False)
+    y_axis = serializers.ListField(child=serializers.FloatField(), required=False)
 
     def get_store(self, obj):
         return obj.store.name
@@ -631,7 +596,7 @@ class OnlyStoreGoodsSerializer(serializers.ModelSerializer):
         model = GoodsModel
         fields = [
             "star_avg",
-            "goods_id",
+            "goods_id", 
             "review_set",
             "category",
             "order_set",
@@ -641,6 +606,8 @@ class OnlyStoreGoodsSerializer(serializers.ModelSerializer):
             "image_set",
             "images",
             "description",
+            "x_axis",
+            "y_axis"
         ]
 
 
@@ -675,19 +642,31 @@ class OnlyStoreReviewSerializer(serializers.ModelSerializer):
         }
 
 
-class ChatStoreSerializer(serializers.Serializer):
-    class Meta:
-        model = StoreModel
-        exclude = ["created_at", "updated_at"]
-
-
 class GoodsCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = GoodsModel
-        exclude = ["store", "category"]
-        # extra_kwargs = {
-        #     "description": {"required": False},
-        # }
+        fields = [
+            'name', 'price', 'description', 'x_axis', 'y_axis'  # เปลี่ยนจาก latitude, longitude
+        ]
+
+    def create(self, validated_data):
+        instance = super().create(validated_data)
+        return instance
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        
+        # Update coordinates if provided
+        x_axis_data = validated_data.get('x_axis')
+        y_axis_data = validated_data.get('y_axis')
+        
+        if x_axis_data is not None:
+            instance.x_axis = x_axis_data
+        if y_axis_data is not None:
+            instance.y_axis = y_axis_data
+            
+        instance.save()
+        return instance
 
 
 class CreateProductSerializer(serializers.ModelSerializer):
@@ -748,6 +727,8 @@ class CreateProductSerializer(serializers.ModelSerializer):
 #     sizes = serializers.ListField(child=serializers.CharField(max_length=50), required=False)
 #     colors = serializers.ListField(child=serializers.CharField(max_length=50), required=False)
 #     images = serializers.ListField(child=serializers.ImageField(), required=False)
+#     latitude = serializers.FloatField(required=False)
+#     longitude = serializers.FloatField(required=False)
 
 #     class Meta:
 #         model = GoodsModel
@@ -782,13 +763,11 @@ class CreateProductSerializer(serializers.ModelSerializer):
 
 
 class UpdateProductSerializer(serializers.ModelSerializer):
-    sizes = serializers.ListField(
-        child=serializers.CharField(max_length=50), required=False
-    )
-    colors = serializers.ListField(
-        child=serializers.CharField(max_length=50), required=False
-    )
+    sizes = serializers.ListField(child=serializers.CharField(max_length=50), required=False)
+    colors = serializers.ListField(child=serializers.CharField(max_length=50), required=False)
     images = serializers.ListField(child=serializers.ImageField(), required=False)
+    x_axis = serializers.ListField(child=serializers.FloatField(), required=False, min_length=2, max_length=2)
+    y_axis = serializers.ListField(child=serializers.FloatField(), required=False, min_length=2, max_length=2)
 
     class Meta:
         model = GoodsModel
@@ -800,12 +779,16 @@ class UpdateProductSerializer(serializers.ModelSerializer):
             "sizes",
             "colors",
             "images",
+            "x_axis",
+            "y_axis"
         ]
 
     def update(self, instance, validated_data):
         sizes_data = validated_data.pop("sizes", None)
         colors_data = validated_data.pop("colors", None)
         images_data = validated_data.pop("images", None)
+        x_axis_data = validated_data.pop("x_axis", None)
+        y_axis_data = validated_data.pop("y_axis", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -813,19 +796,25 @@ class UpdateProductSerializer(serializers.ModelSerializer):
         instance.save()
 
         if sizes_data is not None:
-            instance.size.all().delete()  # Clear existing sizes
+            instance.size.all().delete()
             for size_name in sizes_data:
                 SizeModel.objects.create(product=instance, name=size_name)
 
         if colors_data is not None:
-            instance.color.all().delete()  # Clear existing colors
+            instance.color.all().delete()
             for color_name in colors_data:
                 ColorModel.objects.create(product=instance, name=color_name)
 
         if images_data is not None:
-            instance.images.all().delete()  # Clear existing images
+            instance.images.all().delete()
             for image_file in images_data:
                 ProductImage.objects.create(product=instance, image=image_file)
+
+        if x_axis_data is not None:
+            instance.x_axis = x_axis_data
+
+        if y_axis_data is not None:
+            instance.y_axis = y_axis_data
 
         return instance
 
@@ -889,3 +878,61 @@ class NoticeSerializers(serializers.ModelSerializer):
     class Meta:
         model = NoticeModel
         fields = ["id", "subject", "user", "brochure"]
+
+
+class StockedImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StockedImage
+        fields = ['id', 'position', 'image']
+
+class StockedSerializer(serializers.ModelSerializer):
+    images = StockedImageSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Stocked
+        fields = ['id', 'store', 'point_view', 'created_at', 'updated_at', 'images']
+
+class StockedWithImagesSerializer(serializers.ModelSerializer):
+    images = serializers.ListField(
+        child=serializers.DictField(),
+        write_only=True
+    )
+
+    class Meta:
+        model = Stocked
+        fields = ['store', 'point_view', 'images']
+
+    def create(self, validated_data):
+        images_data = validated_data.pop('images')
+        stocked = Stocked.objects.create(**validated_data)
+        
+        for image_data in images_data:
+            StockedImage.objects.create(
+                stocked=stocked,
+                position=image_data['position'],
+                image=image_data['image']
+            )
+        
+        return stocked
+
+    def update(self, instance, validated_data):
+        images_data = validated_data.pop('images', [])
+        
+        instance.store_id = validated_data.get('store', instance.store_id)
+        instance.point_view = validated_data.get('point_view', instance.point_view)
+        instance.save()
+
+        for image_data in images_data:
+            StockedImage.objects.create(
+                stocked=instance,
+                position=image_data['position'],
+                image=image_data['image']
+            )
+        
+        return instance
+    
+
+class StoreSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoreModel
+        fields = ['id', 'name', 'address', 'phone', 'company_number', 'sub_address', 'introduce']

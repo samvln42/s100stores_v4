@@ -17,7 +17,9 @@ from .models import (
     SizeModel,
     ColorModel,
     WebInfo,
-    NoticeModel
+    NoticeModel,
+    Stocked,
+    StockedImage
 )
 
 
@@ -117,3 +119,15 @@ admin.site.register(SizeModel)
 admin.site.register(ColorModel)
 admin.site.register(WebInfo)
 admin.site.register(NoticeModel)
+
+@admin.register(Stocked)
+class StockedAdmin(admin.ModelAdmin):
+    list_display = ['store', 'created_at', 'updated_at']
+    list_filter = ['store', 'created_at']
+    search_fields = ['store__name']
+
+@admin.register(StockedImage)
+class StockedImageAdmin(admin.ModelAdmin):
+    list_display = ('stocked', 'position', 'image')
+    list_filter = ('position',)
+    search_fields = ('stocked__store__name',)

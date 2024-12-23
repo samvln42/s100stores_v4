@@ -19,6 +19,8 @@ from django.http import JsonResponse
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.filters import OrderingFilter
 from django.http import Http404
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+import json
 
 from .form import ReviewForm
 from .models import (
@@ -40,6 +42,8 @@ from .models import (
     Review,
     WebInfo,
     NoticeModel,
+    Stocked,
+    StockedImage,
 )
 from .serializers import (
     StoreSerializer,
@@ -69,11 +73,16 @@ from .serializers import (
     WebInfoSerializer,
     NoticeListSerializers,
     NoticeSerializers,
+    StockedSerializer,
+    StockedImageSerializer,
+    StockedWithImagesSerializer,
+    OnlyStoreGoodsSerializer,
 )
 
 from .permissions import IsOwnerOrReadOnly
 
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 """
 Permission to divide general users, merchants, and administrators
@@ -450,14 +459,30 @@ class StoreView(APIView):
     )
     def get(self, request, store_id):
         """
-        <View store information>
-        - Store basic information
-        - List of products in the store
+        ดึงข้อมูลร้านค้า พร้อมสินค้าและรูปภาพทั้งหมด
         """
-        store = get_object_or_404(StoreModel, id=store_id)
-        serializer = StoreSerializer(store)
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            # ใช้ prefetch_related เพื่อลด queries
+            store = StoreModel.objects.prefetch_related(
+                'goodsmodel_set',  # ดึงสินค้าทั้งหมด
+                'goodsmodel_set__images',  # ดึงรูปภาพของสินค้า
+                'goodsmodel_set__size',  # ดึงข้อมูล size
+                'goodsmodel_set__color'  # ดึงข้อมูล color
+            ).get(id=store_id)
+            
+            serializer = StoreSerializer(store)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except StoreModel.DoesNotExist:
+            return Response(
+                {"error": "Store not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @swagger_auto_schema(
         tags=["Store information & product registration & store modification"],
@@ -466,82 +491,109 @@ class StoreView(APIView):
     )
     def post(self, request, store_id):
         """
-        <Product Registration>
-        Will be converted to multiple images
+        เพิ่มหรืออัพเดทสินค้าพร้อมรูปภาพ
         """
-        if request.data.get("goods_set"):
-            for data in request.data.get("goods_set"):
-                if data:
-                    serializer = GoodsCreateSerializer(data=data)
-                    category, is_created = CategoryModel.objects.get_or_create(
-                        name=data.get("category")
+        try:
+            store = get_object_or_404(StoreModel, id=store_id)
+            
+            # ตรวจสอบสิทธิ์ (ถ้าจำเป็น)
+            if request.user != store.seller and not request.user.is_admin:
+                return Response(
+                    {"error": "Permission denied"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            goods_data = request.data.get("goods_set", [])
+            response_data = []
+
+            for data in goods_data:
+                # แยกข้อมูลรูปภาพออกจากข้อมูลสินค้า
+                images_data = data.pop('images', [])
+                sizes_data = data.pop('sizes', [])
+                colors_data = data.pop('colors', [])
+
+                # สร้างหรืออัพเดทสินค้า
+                goods_serializer = GoodsCreateSerializer(data=data)
+                if goods_serializer.is_valid():
+                    goods = goods_serializer.save(store=store)
+
+                    # จัดการรูปภาพ
+                    for image_data in images_data:
+                        ProductImage.objects.create(
+                            product=goods,
+                            image=image_data
+                        )
+
+                    # จัดการ sizes
+                    for size in sizes_data:
+                        SizeModel.objects.create(
+                            product=goods,
+                            name=size
+                        )
+
+                    # จัดการ colors
+                    for color in colors_data:
+                        ColorModel.objects.create(
+                            product=goods,
+                            name=color
+                        )
+
+                    # ดึงข้อมูลที่อัพเดทแล้ว
+                    updated_goods = GoodsSerializer(goods).data
+                    response_data.append(updated_goods)
+                else:
+                    return Response(
+                        goods_serializer.errors, 
+                        status=status.HTTP_400_BAD_REQUEST
                     )
-                    if serializer.is_valid():
-                        instance = serializer.save(category=category, store_id=store_id)
-                        # Create sizes
-                        sizes_data = data.get("sizes", [])
-                        for size_data in sizes_data:
-                            SizeModel.objects.create(product=instance, name=size_data)
 
-                        # Create colors
-                        colors_data = data.get("colors", [])
-                        for color_data in colors_data:
-                            ColorModel.objects.create(product=instance, name=color_data)
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
-                        images_data = data.get("images", [])
-                        if images_data:
-                            for image_data in images_data:
-                                format, imgstr = image_data.split(";base64,")
-                                ext = format.split("/")[-1]
-                                file_data = ContentFile(
-                                    base64.b64decode(imgstr),
-                                    name=f"{uuid.uuid4()}.{ext}",
-                                )
-                                ProductImage.objects.create(
-                                    product=instance, image=file_data
-                                )
-                                # ImageModel.objects.create(goods=instance, image=file_data)
+        except Exception as e:
             return Response(
-                {"message": "The product has been registered."},
-                status=status.HTTP_201_CREATED,
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        return Response(
-            {"message": "A problem has occurred."}, status=status.HTTP_400_BAD_REQUEST
-        )
 
     @swagger_auto_schema(
         tags=["Store information & product registration & store modification"],
         request_body=PostSerializer,
         responses={200: "Success"},
     )
-    def patch(self, request, store_id=None):
-        store = get_object_or_404(StoreModel, id=store_id)
-        data = {}
+    def patch(self, request, store_id):
+        """
+        อัพเดทข้อมูลร้านค้า
+        """
         try:
-            for k, v in request.data.items():
-                if v:
-                    data[k] = v
-        except Exception as e:
-            return Response(
-                {"message": "A problem has occurred."},
-                status=status.HTTP_400_BAD_REQUEST,
+            store = get_object_or_404(StoreModel, id=store_id)
+            
+            # ตรวจสอบสิทธิ์
+            if request.user != store.seller and not request.user.is_admin:
+                return Response(
+                    {"error": "Permission denied"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            serializer = UpdateStoreSerializer(
+                store, 
+                data=request.data, 
+                partial=True
             )
-        if request.data.get("store_name"):
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            
             return Response(
-                {"message": "The store name cannot be changed."},
-                status=status.HTTP_400_BAD_REQUEST,
+                serializer.errors, 
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        serializer = UpdateStoreSerializer(store, data=data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
+        except Exception as e:
             return Response(
-                {"message": "Store information has been modified."},
-                status=status.HTTP_200_OK,
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        return Response(
-            {"message": str(serializer.errors)}, status=status.HTTP_400_BAD_REQUEST
-        )
 
 
 class CreateProductAPIView(APIView):
@@ -1223,7 +1275,6 @@ class SearchView(APIView):
         goods_set = GoodsModel.objects.filter(
             Q(name__icontains=search_word) | Q(store__name__icontains=search_word)
         )
-
         goods = GoodsSerializer(goods_set, many=True).data
 
         return Response(goods, status=status.HTTP_200_OK)
@@ -1322,3 +1373,595 @@ class WebInfoRetrieveUpdateAPIView(generics.RetrieveUpdateAPIView):
     queryset = WebInfo.objects.all()
     serializer_class = WebInfoSerializer
     lookup_field = "pk"  # Use 'pk' as the lookup field for retrieving and updating the WebInfo object
+
+
+
+class StockedDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Stocked.objects.all()
+    serializer_class = StockedSerializer
+
+class StockedImageListCreateView(generics.ListCreateAPIView):
+    serializer_class = StockedImageSerializer
+
+    def get_queryset(self):
+        stocked_id = self.kwargs['stocked_id']
+        return StockedImage.objects.filter(stocked_id=stocked_id)
+
+    def perform_create(self, serializer):
+        stocked_id = self.kwargs['stocked_id']
+        serializer.save(stocked_id=stocked_id)
+
+class StockedImageDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = StockedImage.objects.all()
+    serializer_class = StockedImageSerializer
+
+class StoreStockedListView(generics.ListAPIView):
+    serializer_class = StockedSerializer
+
+    def get_queryset(self):
+        store_id = self.kwargs['store_id']
+        return Stocked.objects.filter(store_id=store_id).prefetch_related('images')
+
+    @swagger_auto_schema(
+        tags=["Stocked"],
+        operation_description="Get all stocked items for a specific store",
+        responses={200: StockedSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        if not queryset.exists():
+            return Response(
+                {"message": "No stocked items found for this store"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+class StockedCreateView(generics.CreateAPIView):
+    parser_classes = (JSONParser, MultiPartParser, FormParser)
+    serializer_class = StockedWithImagesSerializer
+    
+    @swagger_auto_schema(
+        tags=["Stocked"],
+        operation_description="Create a stocked item with images for a specific store",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'point_view': openapi.Schema(type=openapi.TYPE_STRING),
+                'images': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'position': openapi.Schema(type=openapi.TYPE_STRING),
+                            'image': openapi.Schema(type=openapi.TYPE_STRING, description='Base64 encoded image'),
+                        }
+                    )
+                ),
+            },
+            required=['images']
+        )
+    )
+    def post(self, request, *args, **kwargs):
+        data = request.data
+        images_data = []
+        
+        # Process images from JSON data
+        for image in data.get('images', []):
+            try:
+                position = image.get('position')
+                image_data = image.get('image')
+                
+                if ';base64,' in image_data:
+                    format, imgstr = image_data.split(';base64,')
+                    ext = format.split('/')[-1]
+                else:
+                    imgstr = image_data
+                    ext = 'jpg'
+                
+                # Add padding if needed
+                padding = len(imgstr) % 4
+                if padding:
+                    imgstr += '=' * (4 - padding)
+
+                # Convert base64 to file
+                file_data = ContentFile(
+                    base64.b64decode(imgstr),
+                    name=f"{uuid.uuid4()}.{ext}"
+                )
+                
+                images_data.append({
+                    'position': position,
+                    'image': file_data
+                })
+            except Exception as e:
+                print(f"Error processing image: {str(e)}")
+                continue
+
+        # Format data for serializer
+        formatted_data = {
+            'store': kwargs['store_id'],
+            'point_view': str(data.get('point_view', 0)),
+            'images': images_data
+        }
+
+        serializer = self.get_serializer(data=formatted_data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class StockedUpdateView(generics.UpdateAPIView):
+    queryset = Stocked.objects.all()
+    serializer_class = StockedWithImagesSerializer
+    parser_classes = (MultiPartParser, FormParser)
+
+    @swagger_auto_schema(
+        tags=["Stocked"],
+        operation_description="Partially update a stocked item",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'store': openapi.Schema(type=openapi.TYPE_INTEGER),
+                'point_view': openapi.Schema(type=openapi.TYPE_STRING),
+                'images': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'id': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'position': openapi.Schema(type=openapi.TYPE_STRING),
+                            'image': openapi.Schema(type=openapi.TYPE_FILE),
+                        }
+                    )
+                ),
+            }
+        )
+    )
+    def patch(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = request.data.copy()
+        
+        # สร้าง data ใหม่สำหรับ Stocked model
+        formatted_data = {}
+        if 'store' in data:
+            formatted_data['store'] = data['store']
+        if 'point_view' in data:
+            formatted_data['point_view'] = str(data['point_view'])
+
+        # อัพเดท Stocked
+        serializer = self.get_serializer(instance, data=formatted_data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            
+            # อัพเดท StockedImage
+            i = 0
+            while f'images[{i}][position]' in data or f'images[{i}][image]' in data:
+                image_id = data.get(f'images[{i}][id]')
+                position = data.get(f'images[{i}][position]')
+                image = data.get(f'images[{i}][image]')
+                
+                if image_id:
+                    # อัพเดทรูปภาพที่มีอยู่
+                    try:
+                        image_instance = StockedImage.objects.get(id=image_id, stocked=instance)
+                        if position:
+                            image_instance.position = position
+                        if image:
+                            image_instance.image = image
+                        image_instance.save()
+                    except StockedImage.DoesNotExist:
+                        pass
+                elif position or image:
+                    # สร้างรูปภาพใหม่
+                    StockedImage.objects.create(
+                        stocked=instance,
+                        position=position,
+                        image=image
+                    )
+                i += 1
+            
+            # ดึงข้อมูลล่าสุด
+            updated_instance = self.get_object()
+            updated_serializer = self.get_serializer(updated_instance)
+            return Response(updated_serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class StoreStockedImageGoodsView(APIView):
+    @swagger_auto_schema(
+        tags=["Store information & product registration"],
+        request_body=PostSerializer,
+        responses={200: "Success"},
+    )
+    def post(self, request, store_id, stocked_image_id):
+        """
+        <Product Registration with Stocked Image>
+        """
+        if request.data.get("goods_set"):
+            store = get_object_or_404(StoreModel, id=store_id)
+            stocked_image = get_object_or_404(
+                StockedImage, 
+                id=stocked_image_id,
+                stocked__store_id=store_id
+            )
+            
+            for data in request.data.get("goods_set"):
+                if data:
+                    serializer = GoodsCreateSerializer(data=data)
+                    category, is_created = CategoryModel.objects.get_or_create(
+                        name=data.get("category")
+                    )
+
+                    if serializer.is_valid():
+                        instance = serializer.save(
+                            store=store,
+                            category=category,
+                            stocked_image=stocked_image,
+                            x_axis=data.get('x_axis'),
+                            y_axis=data.get('y_axis')
+                        )
+                        
+                        # Create sizes if provided
+                        sizes_data = data.get("sizes", [])
+                        for size_data in sizes_data:
+                            SizeModel.objects.create(product=instance, name=size_data)
+
+                        # Create colors if provided
+                        colors_data = data.get("colors", [])
+                        for color_data in colors_data:
+                            ColorModel.objects.create(product=instance, name=color_data)
+
+                        # Handle product images
+                        images_data = data.get("images", [])
+                        if images_data:
+                            for image_data in images_data:
+                                try:
+                                    if ';base64,' in image_data:
+                                        format, imgstr = image_data.split(';base64,')
+                                        ext = format.split('/')[-1]
+                                    else:
+                                        imgstr = image_data
+                                        ext = 'jpg'
+                                    
+                                    padding = len(imgstr) % 4
+                                    if padding:
+                                        imgstr += '=' * (4 - padding)
+
+                                    file_data = ContentFile(
+                                        base64.b64decode(imgstr),
+                                        name=f"{uuid.uuid4()}.{ext}"
+                                    )
+                                    ProductImage.objects.create(
+                                        product=instance, 
+                                        image=file_data
+                                    )
+                                except Exception as e:
+                                    print(f"Error processing image: {str(e)}")
+                                    continue
+
+            return Response(
+                {"message": "The product has been registered."},
+                status=status.HTTP_201_CREATED,
+            )
+        return Response(
+            {"message": "A problem has occurred."}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+class StoreStockedImageGoodsListView(APIView):
+    @swagger_auto_schema(
+        tags=["Store information & product list"],
+        responses={200: GoodsSerializer(many=True)}
+    )
+    def get(self, request, store_id, stocked_image_id):
+        """
+        Get all products for specific store and stocked image
+        """
+        store = get_object_or_404(StoreModel, id=store_id)
+        stocked_image = get_object_or_404(
+            StockedImage, 
+            id=stocked_image_id,
+            stocked__store_id=store_id
+        )
+        
+        goods = GoodsModel.objects.filter(
+            store=store,
+            stocked_image=stocked_image
+        )
+        
+        if not goods.exists():
+            return Response([], status=status.HTTP_200_OK)
+            
+        serializer = GoodsSerializer(goods, many=True)
+        return Response(serializer.data)
+
+# stocked image goods update
+class StoreStockedImageGoodsUpdateView(APIView):
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+    serializer_class = GoodsCreateSerializer
+    
+    def patch(self, request, pk):
+        try:
+            try:
+                goods = GoodsModel.objects.get(id=pk)
+            except GoodsModel.DoesNotExist:
+                return Response(
+                    {
+                        "error": f"Product with ID {pk} not found",
+                        "code": "product_not_found"
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # ตรวจสอบว่ามีการส่งรูปภาพมาหรือไม่
+            if request.FILES:
+                # กรณีอัพเดทรูปภาพ
+                images = request.FILES.getlist('images')
+                
+                if not images:
+                    return Response(
+                        {"error": "No images found in request"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                try:
+                    # ลบรูปภาพเก่า
+                    for old_image in goods.images.all():
+                        if old_image.image:
+                            old_image.image.delete()
+                        old_image.delete()
+                    
+                    # เพิ่มรูปภาพใหม่
+                    for image in images:
+                        ProductImage.objects.create(
+                            product=goods,
+                            image=image
+                        )
+
+                    return Response(
+                        {
+                            "message": "Product images updated successfully",
+                            "image_count": len(images),
+                            "product_id": pk
+                        },
+                        status=status.HTTP_200_OK
+                    )
+                except Exception as img_error:
+                    return Response(
+                        {
+                            "error": f"Error updating images: {str(img_error)}",
+                            "code": "image_update_error"
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # กรณีอัพเดทข้อมูลอื่นๆ
+            data = request.data.copy()
+            
+            # แปลงข้อมูล JSON strings เป็น Python objects
+            for field in ['sizes', 'colors', 'x_axis', 'y_axis']:
+                if field in data and isinstance(data[field], str):
+                    try:
+                        data[field] = json.loads(data[field])
+                    except json.JSONDecodeError:
+                        return Response(
+                            {"error": f"Invalid JSON format for {field}"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+            serializer = self.serializer_class(goods, data=data, partial=True)
+            if serializer.is_valid():
+                instance = serializer.save()
+
+                # อัพเดท sizes ถ้ามี
+                if 'sizes' in data:
+                    SizeModel.objects.filter(product=instance).delete()
+                    for size in data['sizes']:
+                        SizeModel.objects.create(product=instance, name=size)
+
+                # อัพเดท colors ถ้ามี
+                if 'colors' in data:
+                    ColorModel.objects.filter(product=instance).delete()
+                    for color in data['colors']:
+                        ColorModel.objects.create(product=instance, name=color)
+
+                return Response(
+                    {"message": "Product updated successfully"},
+                    status=status.HTTP_200_OK
+                )
+            return Response(
+                {"error": serializer.errors}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "error": str(e),
+                    "code": "unexpected_error"
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+# delete stocked image
+class DeleteStockedImageAPIView(APIView):
+    def delete(self, request, pk, format=None):
+        try:
+            stocked_image = StockedImage.objects.get(pk=pk)
+        except StockedImage.DoesNotExist:
+            return Response(
+                {"message": "Stocked image not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Delete the image file
+        if stocked_image.image:
+            stocked_image.image.delete()
+
+        # Delete the StockedImage instance
+        stocked_image.delete()
+
+        return Response(
+            {"message": "Stocked image deleted successfully"}, 
+            status=status.HTTP_200_OK
+        )
+
+class UpdateStockedImageAPIView(APIView):
+    @swagger_auto_schema(
+        tags=["Stocked Image"],
+        operation_description="Update a stocked image",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'position': openapi.Schema(type=openapi.TYPE_STRING),
+                'image': openapi.Schema(type=openapi.TYPE_FILE),
+            }
+        ),
+        responses={200: "Success"}
+    )
+    def patch(self, request, pk):
+        try:
+            stocked_image = StockedImage.objects.get(pk=pk)
+        except StockedImage.DoesNotExist:
+            return Response(
+                {"message": "Stocked image not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # อัพเดทตำแหน่ง
+        if 'position' in request.data:
+            stocked_image.position = request.data['position']
+
+        # อัพเดทรูปภาพ
+        if 'image' in request.data:
+            # ลบรูปเก่า
+            if stocked_image.image:
+                stocked_image.image.delete()
+            stocked_image.image = request.data['image']
+
+        stocked_image.save()
+
+        return Response(
+            {"message": "Stocked image updated successfully"},
+            status=status.HTTP_200_OK
+        )
+# delete stocked
+class DeleteStockedView(APIView):
+    @swagger_auto_schema(
+        tags=["Stocked"],
+        operation_description="Delete a stocked item and all related products",
+        responses={
+            200: "Success",
+            404: "Not found"
+        }
+    )
+    def delete(self, request, pk):
+        try:
+            stocked = Stocked.objects.get(pk=pk)
+        except Stocked.DoesNotExist:
+            return Response(
+                {"message": "Stocked not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get all StockedImages
+        stocked_images = stocked.images.all()
+        
+        # For each StockedImage, delete related products first
+        for stocked_image in stocked_images:
+            # Get and delete all products related to this stocked image
+            products = GoodsModel.objects.filter(stocked_image=stocked_image)
+            for product in products:
+                # Delete related Size instances
+                SizeModel.objects.filter(product=product).delete()
+                
+                # Delete related Color instances
+                ColorModel.objects.filter(product=product).delete()
+                
+                # Delete related ProductImage instances
+                ProductImage.objects.filter(product=product).delete()
+                
+                # Delete the Product instance
+                product.delete()
+
+            # Delete the physical image file
+            if stocked_image.image:
+                stocked_image.image.delete()
+            
+            # Delete the StockedImage record
+            stocked_image.delete()
+
+        # Finally delete the Stocked instance
+        stocked.delete()
+
+        return Response(
+            {"message": "Stocked and all related data deleted successfully"}, 
+            status=status.HTTP_200_OK
+        )
+
+class ProductsByAreaView(APIView):
+    @swagger_auto_schema(
+        tags=["Store Products"],
+        manual_parameters=[
+            openapi.Parameter('start_x', openapi.IN_QUERY, type=openapi.TYPE_NUMBER, required=True),
+            openapi.Parameter('end_x', openapi.IN_QUERY, type=openapi.TYPE_NUMBER, required=True),
+            openapi.Parameter('start_y', openapi.IN_QUERY, type=openapi.TYPE_NUMBER, required=True),
+            openapi.Parameter('end_y', openapi.IN_QUERY, type=openapi.TYPE_NUMBER, required=True),
+        ],
+        responses={200: OnlyStoreGoodsSerializer(many=True)}
+    )
+    def get(self, request, stocked_image_id):
+        try:
+            # Get coordinates from query params
+            start_x = float(request.query_params.get('start_x'))
+            end_x = float(request.query_params.get('end_x'))
+            start_y = float(request.query_params.get('start_y'))
+            end_y = float(request.query_params.get('end_y'))
+
+            # Get all products for the stocked image
+            products = GoodsModel.objects.filter(stocked_image_id=stocked_image_id)
+            
+            # Filter products manually
+            filtered_products = []
+            for product in products:
+                try:
+                    if product.x_axis and product.y_axis:
+                        # Get coordinates from JSONField
+                        x_coords = product.x_axis
+                        y_coords = product.y_axis
+                        
+                        # Check if coordinates are within range
+                        if (isinstance(x_coords, list) and isinstance(y_coords, list) and
+                            len(x_coords) == 2 and len(y_coords) == 2):
+                            if (start_x <= max(x_coords) and end_x >= min(x_coords) and
+                                start_y <= max(y_coords) and end_y >= min(y_coords)):
+                                filtered_products.append(product)
+                except (TypeError, ValueError, IndexError):
+                    continue
+
+            serializer = OnlyStoreGoodsSerializer(filtered_products, many=True)
+            return Response(serializer.data)
+
+        except ValueError:
+            return Response(
+                {"error": "Invalid coordinate values"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            
+            
+class StoreListView(generics.ListAPIView):
+    queryset = StoreModel.objects.all()
+    serializer_class = StoreSerializer
+
+    @swagger_auto_schema(
+        tags=["Store information"],
+        responses={200: StoreSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)

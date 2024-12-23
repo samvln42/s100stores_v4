@@ -65,7 +65,7 @@ class SendEmail(APIView):
         random_code = "".join(
             random.choices(string.digits, k=6)
         )  # Generate 6-digit random string
-        subject = "[HUMASCOT] Membership verification code"
+        subject = "[TOURDNA] Membership verification code"
         body = f"Email verification code: {random_code}"  # Add to random code body
         email = EmailMessage(
             subject,
