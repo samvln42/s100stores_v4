@@ -102,6 +102,9 @@ urlpatterns = [
          name='products-by-area'),
     # get store list
     path('stores/', views.StoreListView.as_view(), name='store-list'),
+    
+    # add goods
+    path('<int:store_id>/goods', views.StoreGoodsView.as_view(), name='store-goods'),
 ]
 
 # urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

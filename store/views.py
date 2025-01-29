@@ -1965,3 +1965,129 @@ class StoreListView(generics.ListAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+class StoreGoodsView(APIView):
+    @swagger_auto_schema(
+        tags=["Store information & product registration"],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'goods_set': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'name': openapi.Schema(type=openapi.TYPE_STRING),
+                            'price': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'description': openapi.Schema(type=openapi.TYPE_STRING),
+                            'category': openapi.Schema(type=openapi.TYPE_STRING),
+                            'sizes': openapi.Schema(
+                                type=openapi.TYPE_ARRAY,
+                                items=openapi.Schema(type=openapi.TYPE_STRING)
+                            ),
+                            'colors': openapi.Schema(
+                                type=openapi.TYPE_ARRAY,
+                                items=openapi.Schema(type=openapi.TYPE_STRING)
+                            ),
+                            'images': openapi.Schema(
+                                type=openapi.TYPE_ARRAY,
+                                items=openapi.Schema(type=openapi.TYPE_STRING)
+                            ),
+                        }
+                    )
+                ),
+            }
+        ),
+        responses={201: "Created"}
+    )
+    def post(self, request, store_id):
+        """
+        เพิ่มสินค้าใหม่เข้าร้านค้า
+        """
+        try:
+            store = get_object_or_404(StoreModel, id=store_id)
+            
+            # ตรวจสอบสิทธิ์
+            if request.user != store.seller and not request.user.is_admin:
+                return Response(
+                    {"error": "Permission denied"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            if not request.data.get("goods_set"):
+                return Response(
+                    {"error": "No goods data provided"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            response_data = []
+            
+            for data in request.data.get("goods_set"):
+                serializer = GoodsCreateSerializer(data=data)
+                category, _ = CategoryModel.objects.get_or_create(
+                    name=data.get("category")
+                )
+
+                if serializer.is_valid():
+                    instance = serializer.save(
+                        store=store,
+                        category=category
+                    )
+                    
+                    # สร้าง sizes
+                    for size in data.get("sizes", []):
+                        SizeModel.objects.create(
+                            product=instance,
+                            name=size
+                        )
+
+                    # สร้าง colors
+                    for color in data.get("colors", []):
+                        ColorModel.objects.create(
+                            product=instance,
+                            name=color
+                        )
+
+                    # จัดการรูปภาพ
+                    for image_data in data.get("images", []):
+                        try:
+                            if ';base64,' in image_data:
+                                format, imgstr = image_data.split(';base64,')
+                                ext = format.split('/')[-1]
+                            else:
+                                imgstr = image_data
+                                ext = 'jpg'
+                            
+                            padding = len(imgstr) % 4
+                            if padding:
+                                imgstr += '=' * (4 - padding)
+
+                            file_data = ContentFile(
+                                base64.b64decode(imgstr),
+                                name=f"{uuid.uuid4()}.{ext}"
+                            )
+                            ProductImage.objects.create(
+                                product=instance,
+                                image=file_data
+                            )
+                        except Exception as e:
+                            print(f"Error processing image: {str(e)}")
+                            continue
+
+                    response_data.append(GoodsSerializer(instance).data)
+                else:
+                    return Response(
+                        serializer.errors,
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            return Response(
+                response_data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
