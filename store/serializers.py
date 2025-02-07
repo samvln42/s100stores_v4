@@ -24,6 +24,7 @@ from store.models import (
     NoticeModel,
     Stocked,
     StockedImage,
+    StoreBanner,
 )
 from users.models import UserModel
 
@@ -936,3 +937,10 @@ class StoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = StoreModel
         fields = ['id', 'name', 'address', 'phone', 'company_number', 'sub_address', 'introduce']
+
+
+class StoreBannerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoreBanner
+        fields = ['id', 'image']
+

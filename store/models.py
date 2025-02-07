@@ -45,6 +45,21 @@ class StoreModel(models.Model):
     def __str__(self):
         return str(self.name)
     
+    
+# store banner image
+class StoreBanner(models.Model):
+    class Meta:
+        db_table = "store_banner"
+        verbose_name_plural = "Store Banner"
+        
+    store = models.ForeignKey(
+        StoreModel,
+        on_delete=models.CASCADE,
+        related_name='banner'
+    )
+    image = models.ImageField(upload_to='media/store_banner/')
+    
+    
 class Stocked(models.Model):
     class Meta:
         db_table = "stocked"

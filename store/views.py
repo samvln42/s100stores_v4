@@ -44,6 +44,7 @@ from .models import (
     NoticeModel,
     Stocked,
     StockedImage,
+    StoreBanner,
 )
 from .serializers import (
     StoreSerializer,
@@ -77,7 +78,9 @@ from .serializers import (
     StockedImageSerializer,
     StockedWithImagesSerializer,
     OnlyStoreGoodsSerializer,
+    StoreBannerSerializer,
 )
+
 
 from .permissions import IsOwnerOrReadOnly
 
@@ -1846,6 +1849,7 @@ class UpdateStockedImageAPIView(APIView):
             {"message": "Stocked image updated successfully"},
             status=status.HTTP_200_OK
         )
+
 # delete stocked
 class DeleteStockedView(APIView):
     @swagger_auto_schema(
@@ -2091,3 +2095,41 @@ class StoreGoodsView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+class StoreBannerListCreateView(generics.ListCreateAPIView):
+    serializer_class = StoreBannerSerializer
+    
+    def get_queryset(self):
+        return StoreBanner.objects.filter(store_id=self.kwargs['store_id'])
+    
+    def perform_create(self, serializer):
+        store = get_object_or_404(StoreModel, id=self.kwargs['store_id'])
+        
+        # ตรวจสอบว่ามี banner อยู่แล้วหรือไม่
+        existing_banner = StoreBanner.objects.filter(store=store).first()
+        if existing_banner:
+            # ถ้ามี banner อยู่แล้ว ให้ลบรูปเก่า
+            if existing_banner.image:
+                existing_banner.image.delete()
+            existing_banner.delete()
+            
+        # สร้าง banner ใหม่
+        serializer.save(store=store)
+
+class StoreBannerDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = StoreBanner.objects.all()
+    serializer_class = StoreBannerSerializer
+    
+    def perform_update(self, serializer):
+        # ลบรูปเก่าก่อนอัพเดทรูปใหม่
+        instance = self.get_object()
+        if instance.image and hasattr(serializer.validated_data, 'image'):
+            instance.image.delete()
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        if instance.image:
+            instance.image.delete()
+        instance.delete()
+
+
