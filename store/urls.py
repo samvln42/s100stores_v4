@@ -112,6 +112,8 @@ urlpatterns = [
     
     # Create store for seller
     path('admin/create-store', views.create_store_for_seller, name='create-store-for-seller'),
+    
+    path('<int:pk>/', views.StoreDetailsView.as_view(), name='store-details'),
 ]
 
 # urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

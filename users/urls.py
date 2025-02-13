@@ -7,9 +7,8 @@ app_name = 'users'
 
 urlpatterns = [
     path("", views.UserListView.as_view(), name='user-list'),
-    path("<int:pk>", views.UserDetailsView.as_view(), name='user-details'),
+    path("<int:pk>/", views.UserDetailsView.as_view(), name='user-details'),
     path("current", views.CurrentUserView.as_view(), name='current-user'),
-    path('users/<int:id>/delete/', views.UserDetailsView.as_view(), name='user-delete'),
 
     # join the membership
     path("signup", views.SignupView.as_view(), name="signup"),
@@ -51,4 +50,5 @@ urlpatterns = [
     path("policy", views.policy_render, name="intro_render"),
     # Admin Routes for creating users and stores
     path('admin/create-seller-with-store', views.create_seller_with_store, name='create-seller-with-store'),
+    path('<int:pk>/', views.UserDetailsView.as_view(), name='user-details'),
 ]

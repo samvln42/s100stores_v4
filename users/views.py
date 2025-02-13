@@ -48,7 +48,7 @@ import jwt
 from django.conf import settings
 from rest_framework import generics, permissions
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 
 
 # Send email
@@ -924,16 +924,74 @@ class UserListView(generics.ListAPIView):
     # permission_classes = [permissions.IsAuthenticated]  # Example: Require authentication
 
 
-class UserDetailsView(generics.RetrieveAPIView):
-    queryset = UserModel.objects.all()
-    serializer_class = UserSerializer
-    # permission_classes = [permissions.IsAuthenticated]  # Example: Require authentication
-    lookup_field = "id"
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+class UserDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk):
+        try:
+            user = UserModel.objects.get(pk=pk)
+            
+            # Check if user has permission to view details
+            if not request.user.is_admin and request.user.id != pk:
+                return Response({
+                    "message": "You don't have permission to view this user's details"
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Get associated store if user is seller
+            store_data = None
+            if user.is_seller:
+                store = StoreModel.objects.filter(seller=user).first()
+                if store:
+                    store_data = {
+                        "id": store.id,
+                        "name": store.name,
+                        "address": store.address,
+                        "phone": store.phone,
+                        "company_number": store.company_number
+                    }
+            
+            response_data = {
+                "id": user.id,
+                "email": user.email,
+                "nickname": user.nickname,
+                "phone_number": user.phone_number,
+                "profile_image": user.profile_image.url if user.profile_image else None,
+                "is_seller": user.is_seller,
+                "is_admin": user.is_admin,
+                "store": store_data
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except UserModel.DoesNotExist:
+            return Response({
+                "message": "User not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+    def delete(self, request, pk):
+        try:
+            user = UserModel.objects.get(pk=pk)
+            
+            # Check if user has permission to delete
+            if not request.user.is_admin and request.user.id != pk:
+                return Response({
+                    "message": "You don't have permission to delete this user"
+                }, status=status.HTTP_403_FORBIDDEN)
+                
+            # Delete associated store if user is seller
+            if user.is_seller:
+                stores = StoreModel.objects.filter(seller=user)
+                stores.delete()
+                
+            user.delete()
+            return Response({
+                "message": "User deleted successfully"
+            }, status=status.HTTP_204_NO_CONTENT)
+            
+        except UserModel.DoesNotExist:
+            return Response({
+                "message": "User not found"
+            }, status=status.HTTP_404_NOT_FOUND)
 
 
 class CurrentUserView(APIView):

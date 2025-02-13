@@ -11,7 +11,11 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from rest_framework import status, permissions, generics, viewsets, response
 from rest_framework.generics import get_object_or_404
-from rest_framework.permissions import BasePermission, IsAdminUser
+from rest_framework.permissions import (
+    BasePermission, 
+    IsAdminUser,
+    IsAuthenticated
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import CreateAPIView
@@ -610,38 +614,6 @@ class CreateProductAPIView(APIView):
         serializer = StoreSerializer(store)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @swagger_auto_schema(
-        tags=["Store information & product registration & store modification"],
-        request_body=PostSerializer,
-        responses={200: "Success"},
-    )
-    def post(self, request, store_id, format=None):
-        products_data = request.data.get(
-            "goods_set"
-        )  # Get the list of products from request data
-        created_products = []
-
-        for product_data in products_data:
-            product_data["store"] = store_id  # Assign store_id to each product data
-            serializer = CreateProductSerializer(data=product_data)
-
-            if serializer.is_valid():
-                product = serializer.save()
-                created_products.append(product)
-            else:
-                return Response(
-                    {"message": "error", "errors": serializer.errors},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        return Response(
-            {
-                "message": "success",
-                "products": [str(product) for product in created_products],
-            },
-            status=status.HTTP_201_CREATED,
-        )
 
 
 class CreateProductView(CreateAPIView):
@@ -2146,5 +2118,42 @@ def create_store_for_seller(request):
             }
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class StoreDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk):
+        try:
+            store = StoreModel.objects.get(pk=pk)
+            return Response({
+                "id": store.id,
+                "name": store.name,
+                "address": store.address,
+                "seller": store.seller.id
+            })
+        except StoreModel.DoesNotExist:
+            return Response({
+                "message": "Store not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    def delete(self, request, pk):
+        try:
+            store = StoreModel.objects.get(pk=pk)
+            
+            # Check if user has permission to delete
+            if not request.user.is_admin and request.user != store.seller:
+                return Response({
+                    "message": "You don't have permission to delete this store"
+                }, status=status.HTTP_403_FORBIDDEN)
+                
+            store.delete()
+            return Response({
+                "message": "Store deleted successfully"
+            }, status=status.HTTP_204_NO_CONTENT)
+            
+        except StoreModel.DoesNotExist:
+            return Response({
+                "message": "Store not found"
+            }, status=status.HTTP_404_NOT_FOUND)
 
 

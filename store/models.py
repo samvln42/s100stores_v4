@@ -45,7 +45,20 @@ class StoreModel(models.Model):
     def __str__(self):
         return str(self.name)
     
-    
+    def delete(self, *args, **kwargs):
+        # Get the seller before deleting the store
+        seller = self.seller
+        
+        # Delete the store
+        super().delete(*args, **kwargs)
+        
+        # Check if the seller has no other stores
+        if not StoreModel.objects.filter(seller=seller).exists():
+            # Convert seller to regular user by setting is_seller to False
+            seller.is_seller = False
+            seller.save()
+
+
 # store banner image
 class StoreBanner(models.Model):
     class Meta:
