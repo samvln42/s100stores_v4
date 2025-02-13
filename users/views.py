@@ -40,6 +40,7 @@ from .serializers import (
     ClientUserSerializer,
     SellerUserSerializer,
     CreateSellerSerializer,
+    CreateSellerWithStoreSerializer,
 )
 from django.shortcuts import render
 import smtplib
@@ -944,18 +945,55 @@ class CurrentUserView(APIView):
 
 
 @api_view(['POST'])
-@permission_classes([IsAdminUser])  # เฉพาะ admin เท่านั้นที่สามารถเพิ่ม seller ได้
-def create_seller(request):
-    serializer = CreateSellerSerializer(data=request.data)
+@permission_classes([IsAdminUser])
+def create_seller_with_store(request):
+    serializer = CreateSellerWithStoreSerializer(data=request.data)
+    
     if serializer.is_valid():
-        seller = serializer.save()
-        return Response({
-            'message': 'Seller created successfully',
-            'seller': {
-                'id': seller.id,
-                'email': seller.email,
-                'nickname': seller.nickname,
-                'phone_number': seller.phone_number
-            }
-        }, status=status.HTTP_201_CREATED)
+        try:
+            with transaction.atomic():
+                # Create seller user
+                user = UserModel.objects.create_user(
+                    email=serializer.validated_data['email'],
+                    nickname=serializer.validated_data['nickname'],
+                    password=serializer.validated_data['password']
+                )
+                user.is_seller = True
+                if 'phone_number' in serializer.validated_data:
+                    user.phone_number = serializer.validated_data['phone_number']
+                user.save()
+
+                # Create store
+                store = StoreModel.objects.create(
+                    seller=user,
+                    name=serializer.validated_data['store_name'],
+                    address=serializer.validated_data['store_address'],
+                    phone=serializer.validated_data.get('store_phone', ''),
+                    company_number=serializer.validated_data.get('company_number', ''),
+                    sub_address=serializer.validated_data.get('sub_address', ''),
+                    introduce=serializer.validated_data.get('introduce', '')
+                )
+
+                return Response({
+                    'message': 'Seller and store created successfully',
+                    'data': {
+                        'user': {
+                            'id': user.id,
+                            'email': user.email,
+                            'nickname': user.nickname,
+                            'phone_number': user.phone_number
+                        },
+                        'store': {
+                            'id': store.id,
+                            'name': store.name,
+                            'address': store.address
+                        }
+                    }
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({
+                'message': f'Error creating seller and store: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

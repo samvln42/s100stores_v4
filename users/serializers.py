@@ -140,3 +140,36 @@ class CreateSellerSerializer(serializers.ModelSerializer):
             password=validated_data['password']
         )
         return user
+
+
+class CreateSellerWithStoreSerializer(serializers.Serializer):
+    # User fields
+    email = serializers.EmailField()
+    nickname = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    
+    # Store fields
+    store_name = serializers.CharField(max_length=100)
+    store_address = serializers.CharField(max_length=200)
+    store_phone = serializers.CharField(required=False, allow_blank=True)
+    company_number = serializers.CharField(required=False, allow_blank=True)
+    sub_address = serializers.CharField(required=False, allow_blank=True)
+    introduce = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        # Validate store name length
+        if len(attrs.get('store_name', '')) > 15:
+            raise ValidationError("Please write your store name in 15 characters or less.")
+        
+        # Validate store phone format if provided
+        store_phone = attrs.get('store_phone')
+        if store_phone and not store_phone.isdigit():
+            raise ValidationError("Please enter only numbers for your store phone number!")
+        
+        # Validate store introduction length if provided
+        introduce = attrs.get('introduce')
+        if introduce and len(introduce) > 300:
+            raise ValidationError("Please write your store introduction in 300 characters or less.")
+            
+        return attrs
