@@ -6,3 +6,4 @@
 # taca-server
 # w3dbackend
 # s100stores
+# s100stores_v2
