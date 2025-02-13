@@ -944,3 +944,46 @@ class StoreBannerSerializer(serializers.ModelSerializer):
         model = StoreBanner
         fields = ['id', 'image']
 
+
+class SellerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoreModel
+        fields = [
+            'id',
+            'seller',
+            'name',
+            'introduce',
+            'address',
+            'phone',
+            'background_image',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        return StoreModel.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
+
+
+class CreateStoreSerializer(serializers.ModelSerializer):
+    seller_id = serializers.IntegerField()
+
+    class Meta:
+        model = StoreModel
+        fields = ['seller_id', 'name', 'address', 'phone', 'company_number', 'sub_address', 'introduce']
+
+    def validate_seller_id(self, value):
+        try:
+            seller = UserModel.objects.get(id=value, is_seller=True)
+            if StoreModel.objects.filter(seller=seller).exists():
+                raise serializers.ValidationError("Seller already has a store")
+            return value
+        except UserModel.DoesNotExist:
+            raise serializers.ValidationError("Invalid seller ID or user is not a seller")
+

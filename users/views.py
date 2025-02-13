@@ -39,12 +39,15 @@ from .serializers import (
     AdminUserSerializer,
     ClientUserSerializer,
     SellerUserSerializer,
+    CreateSellerSerializer,
 )
 from django.shortcuts import render
 import smtplib
 import jwt
 from django.conf import settings
 from rest_framework import generics, permissions
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAdminUser
 
 
 # Send email
@@ -938,3 +941,21 @@ class CurrentUserView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])  # เฉพาะ admin เท่านั้นที่สามารถเพิ่ม seller ได้
+def create_seller(request):
+    serializer = CreateSellerSerializer(data=request.data)
+    if serializer.is_valid():
+        seller = serializer.save()
+        return Response({
+            'message': 'Seller created successfully',
+            'seller': {
+                'id': seller.id,
+                'email': seller.email,
+                'nickname': seller.nickname,
+                'phone_number': seller.phone_number
+            }
+        }, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -109,6 +109,9 @@ urlpatterns = [
     # Store Banner URLs
     path('<int:store_id>/banners', views.StoreBannerListCreateView.as_view(), name='store-banner-list-create'),
     path('banner/<int:pk>', views.StoreBannerDetailView.as_view(), name='store-banner-detail'),
+    
+    # Create store for seller
+    path('admin/create-store', views.create_store_for_seller, name='create-store-for-seller'),
 ]
 
 # urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

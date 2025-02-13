@@ -34,12 +34,16 @@ class CheckEmail(models.Model):
         super().save(**kwargs)
 
 class UserManager(BaseUserManager):
-    def create_user(self, email, password=None, nickname=None):
+    def create_user(self, email, nickname, password=None):
         if not email:
-            raise ValueError("Users must have an email")
+            raise ValueError("Users must have an email address")
 
-        user = self.model(email=email, nickname=nickname)
+        user = self.model(
+            email=self.normalize_email(email),
+            nickname=nickname,
+        )
         user.set_password(password)
+        user.is_seller = True  # ตั้งค่าเป็น seller โดยตรง
         user.save(using=self._db)
         return user
 
@@ -57,6 +61,12 @@ class UserModel(AbstractBaseUser):
     email = models.EmailField(verbose_name="Email Address", max_length=100, unique=True)
     nickname = models.CharField(
         verbose_name="nickname", max_length=30, null=True, blank=True
+    )
+    phone_number = models.CharField(
+        verbose_name="Phone Number", 
+        max_length=20, 
+        null=True, 
+        blank=True
     )
     
     profile_image = models.FileField(

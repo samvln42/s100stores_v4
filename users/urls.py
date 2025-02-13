@@ -49,4 +49,6 @@ urlpatterns = [
     path("intro", views.intro_render, name="intro_render"),
     path("terms", views.term_render, name="intro_render"),
     path("policy", views.policy_render, name="intro_render"),
+    # Admin Routes for creating users and stores
+    path('admin/create-seller', views.create_seller, name='create-seller'),
 ]

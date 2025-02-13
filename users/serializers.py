@@ -123,3 +123,20 @@ class PostUserSerializer(serializers.Serializer):
     password = serializers.CharField(help_text="Password required for login")
     password2 = serializers.CharField(help_text="Password check")
     social = serializers.CharField(help_text="Types for social login transfer URLs")
+
+
+class CreateSellerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserModel
+        fields = ('email', 'nickname', 'password')
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
+
+    def create(self, validated_data):
+        user = UserModel.objects.create_user(
+            email=validated_data['email'],
+            nickname=validated_data['nickname'],
+            password=validated_data['password']
+        )
+        return user

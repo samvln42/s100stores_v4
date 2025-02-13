@@ -11,7 +11,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from rest_framework import status, permissions, generics, viewsets, response
 from rest_framework.generics import get_object_or_404
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import CreateAPIView
@@ -21,6 +21,10 @@ from rest_framework.filters import OrderingFilter
 from django.http import Http404
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import json
+from rest_framework.decorators import api_view, permission_classes
+from users.models import UserModel
+from .models import StoreModel
+from .serializers import CreateStoreSerializer
 
 from .form import ReviewForm
 from .models import (
@@ -79,6 +83,7 @@ from .serializers import (
     StockedWithImagesSerializer,
     OnlyStoreGoodsSerializer,
     StoreBannerSerializer,
+    CreateStoreSerializer,
 )
 
 
@@ -148,15 +153,6 @@ class NoticeList(generics.ListAPIView):
 class NoticeDetailDelete(generics.RetrieveDestroyAPIView):
     queryset = NoticeModel.objects.all()
     serializer_class = NoticeListSerializers
-
-    def delete(self, request, *args, **kwargs):
-        instance = self.get_object()
-        self.perform_destroy(instance)
-        messages.success(request, "Notice deleted successfully.")
-        return Response(
-            {"message": "Notice deleted successfully."},
-            status=status.HTTP_200_OK,
-        )
 
 
 class NoticeCreate(generics.CreateAPIView):
@@ -2131,5 +2127,24 @@ class StoreBannerDetailView(generics.RetrieveUpdateDestroyAPIView):
         if instance.image:
             instance.image.delete()
         instance.delete()
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def create_store_for_seller(request):
+    serializer = CreateStoreSerializer(data=request.data)
+    if serializer.is_valid():
+        seller = UserModel.objects.get(id=serializer.validated_data['seller_id'])
+        store = serializer.save(seller=seller)
+        return Response({
+            'message': 'Store created successfully',
+            'store': {
+                'id': store.id,
+                'name': store.name,
+                'address': store.address,
+                'phone': store.phone,
+                'seller_id': store.seller.id
+            }
+        }, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
