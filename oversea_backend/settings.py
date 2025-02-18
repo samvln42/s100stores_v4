@@ -24,7 +24,14 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # หรือ domain ของ React app ของคุณ
+    "http://localhost:3000",
+    "http://3.35.253.107",
+    "https://tacashop.com"
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://3.35.253.107',
+    'https://tacashop.com'
 ]
 
 
@@ -123,10 +130,10 @@ INSTALLED_APPS = [
     "storages",
 ]
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
-    "django.middleware.common.CommonMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",

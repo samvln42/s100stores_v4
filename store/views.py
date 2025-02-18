@@ -53,6 +53,7 @@ from .models import (
     Stocked,
     StockedImage,
     StoreBanner,
+    Mode3D,
 )
 from .serializers import (
     StoreSerializer,
@@ -88,6 +89,7 @@ from .serializers import (
     OnlyStoreGoodsSerializer,
     StoreBannerSerializer,
     CreateStoreSerializer,
+    Mode3DSerializer,
 )
 
 
@@ -2129,8 +2131,39 @@ class StoreDetailsView(APIView):
                 "id": store.id,
                 "name": store.name,
                 "address": store.address,
+                "phone": store.phone,
+                "company_number": store.company_number,
+                "sub_address": store.sub_address,
+                "introduce": store.introduce,
                 "seller": store.seller.id
             })
+        except StoreModel.DoesNotExist:
+            return Response({
+                "message": "Store not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+    
+    def patch(self, request, pk):
+        try:
+            store = StoreModel.objects.get(pk=pk)
+            
+            # Check if user has permission to update
+            if not request.user.is_admin and request.user != store.seller:
+                return Response({
+                    "message": "You don't have permission to update this store"
+                }, status=status.HTTP_403_FORBIDDEN)
+                
+            serializer = UpdateStoreSerializer(
+                store,
+                data=request.data,
+                partial=True  # Allow partial updates
+            )
+            
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
         except StoreModel.DoesNotExist:
             return Response({
                 "message": "Store not found"
@@ -2155,5 +2188,80 @@ class StoreDetailsView(APIView):
             return Response({
                 "message": "Store not found"
             }, status=status.HTTP_404_NOT_FOUND)
+
+class Mode3DUpdateView(APIView):
+    permission_classes = []  # Remove authentication requirement for GET
+    
+    def get_permissions(self):
+        if self.request.method == 'PATCH':
+            return [IsAuthenticated()]  # Require authentication for PATCH
+        return []  # No authentication required for GET
+
+    @swagger_auto_schema(
+        tags=["Store 3D Mode"],
+        request_body=Mode3DSerializer,
+        responses={
+            200: openapi.Response("Success", Mode3DSerializer),
+            404: "Store not found",
+            403: "Permission denied"
+        }
+    )
+    def patch(self, request, store_id):
+        try:
+            store = StoreModel.objects.get(id=store_id)
+            
+            # Check permissions
+            if request.user != store.seller and not request.user.is_admin:
+                return Response(
+                    {"error": "Permission denied"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Get or create Mode3D instance
+            mode_3d, created = Mode3D.objects.get_or_create(store=store)
+            
+            # Update the is_enabled field
+            serializer = Mode3DSerializer(mode_3d, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except StoreModel.DoesNotExist:
+            return Response(
+                {"error": "Store not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @swagger_auto_schema(
+        tags=["Store 3D Mode"],
+        responses={
+            200: Mode3DSerializer,
+            404: "Store not found"
+        }
+    )
+    def get(self, request, store_id):
+        try:
+            store = StoreModel.objects.get(id=store_id)
+            mode_3d, created = Mode3D.objects.get_or_create(store=store)
+            serializer = Mode3DSerializer(mode_3d)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except StoreModel.DoesNotExist:
+            return Response(
+                {"error": "Store not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 

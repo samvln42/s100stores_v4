@@ -25,6 +25,7 @@ from store.models import (
     Stocked,
     StockedImage,
     StoreBanner,
+    Mode3D,
 )
 from users.models import UserModel
 
@@ -934,9 +935,20 @@ class StockedWithImagesSerializer(serializers.ModelSerializer):
     
 
 class StoreSerializer(serializers.ModelSerializer):
+    is_admin = serializers.SerializerMethodField()
+    
+    email = serializers.SerializerMethodField()
+    
+    def get_email(self, obj):
+        return obj.seller.email if obj.seller else None
+    
+    def get_is_admin(self, obj):
+        return obj.seller.is_admin if obj.seller else False
+    
+    
     class Meta:
         model = StoreModel
-        fields = ['id', 'name', 'address', 'phone', 'company_number', 'sub_address', 'introduce']
+        fields = ['id', 'name', 'address', 'phone', 'company_number', 'sub_address', 'introduce', 'is_admin', 'email']
 
 
 class StoreBannerSerializer(serializers.ModelSerializer):
@@ -986,4 +998,10 @@ class CreateStoreSerializer(serializers.ModelSerializer):
             return value
         except UserModel.DoesNotExist:
             raise serializers.ValidationError("Invalid seller ID or user is not a seller")
+
+
+class Mode3DSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mode3D
+        fields = ['is_enabled']
 

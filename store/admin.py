@@ -19,7 +19,9 @@ from .models import (
     WebInfo,
     NoticeModel,
     Stocked,
-    StockedImage
+    StockedImage,
+    Mode3D,
+    StoreBanner,
 )
 
 
@@ -131,3 +133,17 @@ class StockedImageAdmin(admin.ModelAdmin):
     list_display = ('stocked', 'position', 'image')
     list_filter = ('position',)
     search_fields = ('stocked__store__name',)
+    
+@admin.register(Mode3D)
+class Mode3DAdmin(admin.ModelAdmin):
+    list_display = ('store', 'is_enabled')
+    list_filter = ('is_enabled',)
+    search_fields = ('store__name',)
+
+
+@admin.register(StoreBanner)
+class StoreBannerAdmin(admin.ModelAdmin):
+    list_display = ('store', 'image')
+    list_filter = ('store',)
+    search_fields = ('store__name',)
+

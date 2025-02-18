@@ -114,6 +114,11 @@ urlpatterns = [
     path('admin/create-store', views.create_store_for_seller, name='create-store-for-seller'),
     
     path('<int:pk>/', views.StoreDetailsView.as_view(), name='store-details'),
+    
+    # Mode3D endpoint
+    path('<int:store_id>/mode-3d', 
+         views.Mode3DUpdateView.as_view(), 
+         name='store-mode-3d'),
 ]
 
 # urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

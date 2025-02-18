@@ -45,6 +45,12 @@ class StoreModel(models.Model):
     def __str__(self):
         return str(self.name)
     
+    def save(self, *args, **kwargs):
+        # Save the store first
+        super().save(*args, **kwargs)
+        # Create Mode3D instance if it doesn't exist
+        Mode3D.objects.get_or_create(store=self, defaults={'is_enabled': False})
+    
     def delete(self, *args, **kwargs):
         # Get the seller before deleting the store
         seller = self.seller
@@ -382,3 +388,19 @@ class NoticeModel(models.Model):
     
     def __str__(self):
         return self.subject
+
+
+class Mode3D(models.Model):
+    class Meta:
+        db_table = "mode_3d"
+        verbose_name_plural = "3D Mode Settings"
+
+    store = models.OneToOneField(
+        StoreModel,
+        on_delete=models.CASCADE,
+        related_name='mode_3d'
+    )
+    is_enabled = models.BooleanField(default=False, verbose_name="3D Mode Enabled")
+    
+    def __str__(self):
+        return f"3D Mode for {self.store.name}"
