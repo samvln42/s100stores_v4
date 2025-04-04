@@ -22,6 +22,7 @@ from .models import (
     StockedImage,
     Mode3D,
     StoreBanner,
+    Mode3DImage,
 )
 
 
@@ -146,4 +147,12 @@ class StoreBannerAdmin(admin.ModelAdmin):
     list_display = ('store', 'image')
     list_filter = ('store',)
     search_fields = ('store__name',)
+
+@admin.register(Mode3DImage)
+class Mode3DImageAdmin(admin.ModelAdmin):
+    list_display = ['id', 'store', 'name', 'sort_order', 'created_at', 'updated_at']
+    list_filter = ['store', 'created_at', 'updated_at']
+    search_fields = ['name', 'store__name']
+    ordering = ['store', 'sort_order']
+
 

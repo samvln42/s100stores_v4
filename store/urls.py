@@ -119,6 +119,26 @@ urlpatterns = [
     path('<int:store_id>/mode-3d', 
          views.Mode3DUpdateView.as_view(), 
          name='store-mode-3d'),
+    
+    # 3D Mode Image Bulk Create
+    path('<int:store_id>/mode-3d/images/bulk-create', 
+         views.Mode3DImageBulkCreateView.as_view(), 
+         name='mode-3d-images-bulk-create'),
+         
+    # 3D Mode Image List
+    path('<int:store_id>/mode-3d/images', 
+         views.Mode3DImageListView.as_view(), 
+         name='mode-3d-images-list'),
+         
+    # 3D Mode Image Update
+    path('<int:store_id>/mode-3d/images/<int:image_id>/update', 
+         views.Mode3DImageUpdateView.as_view(), 
+         name='mode-3d-image-update'),
+         
+    # 3D Mode Image Delete
+    path('mode-3d/images/<int:image_id>/delete', 
+         views.Mode3DImageDeleteView.as_view(), 
+         name='mode-3d-image-delete'),
 ]
 
 # urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

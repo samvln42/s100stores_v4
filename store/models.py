@@ -404,3 +404,21 @@ class Mode3D(models.Model):
     
     def __str__(self):
         return f"3D Mode for {self.store.name}"
+    
+# 3D Mode Image panorama
+class Mode3DImage(models.Model):
+    class Meta:
+        db_table = "mode_3d_image"
+        verbose_name_plural = "3D Mode Image"
+        unique_together = ['store', 'sort_order']
+        
+    store = models.ForeignKey(StoreModel, on_delete=models.CASCADE, related_name='mode_3d_image')
+    image = models.ImageField(upload_to='media/mode_3d/')
+    name = models.CharField(max_length=100, null=True, blank=True)
+    sort_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    
+    def __str__(self):
+        return f"3D Mode Image for {self.store.name}"

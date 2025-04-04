@@ -54,6 +54,7 @@ from .models import (
     StockedImage,
     StoreBanner,
     Mode3D,
+    Mode3DImage,
 )
 from .serializers import (
     StoreSerializer,
@@ -90,6 +91,10 @@ from .serializers import (
     StoreBannerSerializer,
     CreateStoreSerializer,
     Mode3DSerializer,
+    Mode3DImageBulkCreateSerializer,
+    Mode3DImageSerializer,
+    Mode3DImageUpdateSerializer,
+    Mode3DImageListSerializer,
 )
 
 
@@ -2263,5 +2268,103 @@ class Mode3DUpdateView(APIView):
                 {"error": str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class Mode3DImageBulkCreateView(APIView):
+    parser_classes = (JSONParser,)
+
+    def post(self, request, store_id):
+        try:
+            store = StoreModel.objects.get(id=store_id)
+        except StoreModel.DoesNotExist:
+            return Response(
+                {"error": "Store not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = Mode3DImageBulkCreateSerializer(
+            data=request.data,
+            context={'store_id': store_id}  # ส่ง store_id เข้าไปใน context
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                Mode3DImageSerializer(serializer.instance, many=True).data,
+                status=status.HTTP_201_CREATED
+            )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class Mode3DImageUpdateView(APIView):
+    parser_classes = (MultiPartParser, FormParser)
+    
+    def patch(self, request, store_id, image_id):
+        try:
+            # Get the image instance
+            image = Mode3DImage.objects.get(id=image_id, store_id=store_id)
+            
+            # Use serializer to validate and update the image
+            serializer = Mode3DImageUpdateSerializer(
+                image, 
+                data=request.data, 
+                partial=True,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                serializer.save()
+                # Return the updated image using the list serializer
+                response_serializer = Mode3DImageListSerializer(image)
+                return Response(response_serializer.data, status=status.HTTP_200_OK)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Mode3DImage.DoesNotExist:
+            return Response(
+                {"error": "Image not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+class Mode3DImageListView(generics.ListAPIView):
+    serializer_class = Mode3DImageListSerializer
+    
+    def get_queryset(self):
+        store_id = self.kwargs['store_id']
+        return Mode3DImage.objects.filter(store_id=store_id).order_by('sort_order')
+
+class Mode3DImageDeleteView(APIView):
+    def delete(self, request, image_id):
+        try:
+            # Get the image instance
+            image = Mode3DImage.objects.get(id=image_id)
+            
+            # Delete the image file from storage
+            if image.image:
+                image.image.delete()
+            
+            # Delete the database record
+            image.delete()
+            
+            return Response(
+                {"message": "Image deleted successfully"}, 
+                status=status.HTTP_200_OK
+            )
+            
+        except Mode3DImage.DoesNotExist:
+            return Response(
+                {"error": "Image not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 

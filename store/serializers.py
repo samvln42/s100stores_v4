@@ -5,6 +5,7 @@ from rest_framework import serializers
 from rest_framework.serializers import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.core.files.base import ContentFile
+from django.db import models
 
 from store.models import (
     StoreModel,
@@ -26,6 +27,7 @@ from store.models import (
     StockedImage,
     StoreBanner,
     Mode3D,
+    Mode3DImage,
 )
 from users.models import UserModel
 
@@ -1004,4 +1006,156 @@ class Mode3DSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mode3D
         fields = ['is_enabled']
+
+
+# 3D Mode Image
+class Mode3DImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mode3DImage
+        fields = ['id', 'store', 'image', 'name', 'sort_order', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+
+# 3D Mode Image Create
+class Mode3DImageCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mode3DImage
+        fields = ['image', 'name', 'sort_order']
+
+
+# 3D Mode Image Bulk Create
+class Mode3DImageBulkCreateSerializer(serializers.Serializer):
+    images = serializers.ListField(
+        child=serializers.DictField(
+            child=serializers.CharField()
+        )
+    )
+
+    def create(self, validated_data):
+        images_data = validated_data.get('images', [])
+        created_images = []
+        
+        # Get the store_id from context
+        store_id = self.context['store_id']
+        
+        # Get all existing sort_orders for this store
+        existing_orders = set(Mode3DImage.objects.filter(store_id=store_id).values_list('sort_order', flat=True))
+        
+        # Find the maximum sort_order
+        max_sort_order = max(existing_orders) if existing_orders else -1
+        
+        # Find available numbers between 0 and max_sort_order
+        available_orders = [num for num in range(max_sort_order + 1) if num not in existing_orders]
+        
+        # Sort available orders
+        available_orders.sort()
+        
+        # Counter for new images
+        new_image_count = 0
+        
+        for image_data in images_data:
+            # Store metadata before processing image
+            name = image_data.get('name')
+            
+            # Determine sort_order
+            if new_image_count < len(available_orders):
+                # Use available order if there are any
+                sort_order = available_orders[new_image_count]
+            else:
+                # Otherwise use the next number after max_sort_order
+                sort_order = max_sort_order + (new_image_count - len(available_orders) + 1)
+            
+            # Convert base64 image to file
+            image_base64 = image_data.get('image')
+            if image_base64:
+                try:
+                    # Remove data URL prefix if present
+                    if ',' in image_base64:
+                        image_base64 = image_base64.split(',')[1]
+                    
+                    # Add padding if needed
+                    padding = len(image_base64) % 4
+                    if padding:
+                        image_base64 += '=' * (4 - padding)
+                    
+                    # Decode base64 to binary
+                    image_binary = base64.b64decode(image_base64)
+                    
+                    # Generate unique filename
+                    filename = f"{uuid.uuid4()}.jpg"
+                    
+                    # Create ContentFile from binary data
+                    image_file = ContentFile(image_binary, name=filename)
+                    
+                    # Create Mode3DImage instance
+                    image_obj = Mode3DImage.objects.create(
+                        store_id=store_id,
+                        image=image_file,
+                        name=name,
+                        sort_order=sort_order
+                    )
+                    created_images.append(image_obj)
+                    new_image_count += 1
+                except Exception as e:
+                    raise serializers.ValidationError(f"Error processing image: {str(e)}")
+            
+        return created_images
+
+
+# 3D Mode Image Update
+class Mode3DImageUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mode3DImage
+        fields = ['image', 'name', 'sort_order']
+        extra_kwargs = {
+            'image': {'required': False},
+            'name': {'required': False},
+            'sort_order': {'required': False}
+        }
+
+    def validate(self, attrs):
+        # Get the instance being updated
+        instance = self.instance
+        store_id = instance.store_id
+        
+        # Get the new sort_order if it's being updated
+        new_sort_order = attrs.get('sort_order')
+        
+        if new_sort_order is not None:
+            # Check if another image in the same store has this sort_order
+            existing_image = Mode3DImage.objects.filter(
+                store_id=store_id,
+                sort_order=new_sort_order
+            ).exclude(id=instance.id).first()
+            
+            if existing_image:
+                # Get all used sort_orders in the store
+                used_orders = set(Mode3DImage.objects.filter(
+                    store_id=store_id
+                ).exclude(id=instance.id).values_list('sort_order', flat=True))
+                
+                # Get the highest sort_order
+                max_sort_order = max(used_orders) if used_orders else 0
+                
+                # Find available numbers between 0 and max_sort_order
+                available_orders = [num for num in range(max_sort_order + 1) if num not in used_orders]
+                
+                # Format available numbers for display
+                available_text = ", ".join(map(str, available_orders)) if available_orders else "No available numbers"
+                
+                raise serializers.ValidationError({
+                    'sort_order': f'order number {new_sort_order} already exists in this store',
+                    'last_available_order': max_sort_order,
+                    'available_orders': available_orders,
+                    'message': f'Please select a new order number (available numbers from 0 is: {available_text}) or from {max_sort_order + 1} to 1000'
+                })
+        
+        return attrs
+
+
+class Mode3DImageListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mode3DImage
+        fields = ['id', 'image', 'name', 'sort_order', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
 
